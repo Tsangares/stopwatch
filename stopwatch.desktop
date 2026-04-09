@@ -1,7 +1,7 @@
 [Desktop Entry]
-Name=Stopwatch
+Name=Awesome Stopwatch
 Comment=A minimal GTK3 stopwatch with lap support
-Exec=stopwatch
+Exec=awesome-stopwatch
 Icon=chronometer
 Terminal=false
 Type=Application

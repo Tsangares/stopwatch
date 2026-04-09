@@ -9,8 +9,14 @@ import gi
 if os.fork() != 0:
     sys.exit(0)
 os.setsid()
+# Redirect stdio to /dev/null so closing the parent terminal doesn't crash us
+devnull = os.open(os.devnull, os.O_RDWR)
+for fd in (0, 1, 2):
+    os.dup2(devnull, fd)
+os.close(devnull)
+
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, Pango, Gdk
+from gi.repository import Gtk, GLib, Gdk
 
 
 def fmt(s):
@@ -46,8 +52,14 @@ class Stopwatch(Gtk.Window):
         self.time_label = Gtk.Label(label="00:00.00")
         self.time_label.set_name("time-display")
         self.time_label.set_margin_top(40)
-        self.time_label.set_margin_bottom(20)
+        self.time_label.set_margin_bottom(4)
         vbox.pack_start(self.time_label, False, False, 0)
+
+        # Live lap split display
+        self.lap_label = Gtk.Label(label="")
+        self.lap_label.set_name("lap-display")
+        self.lap_label.set_margin_bottom(20)
+        vbox.pack_start(self.lap_label, False, False, 0)
 
         # Buttons
         btn_box = Gtk.Box(spacing=12)
@@ -94,7 +106,7 @@ class Stopwatch(Gtk.Window):
                 col.add_attribute(renderer, "text", 0)
             else:
                 col.add_attribute(renderer, "text", i)
-                col.add_attribute(renderer, "foreground", i)  # overridden in render
+                col.add_attribute(renderer, "foreground", i)
             col.set_expand(True)
             self.lap_view.append_column(col)
 
@@ -103,6 +115,9 @@ class Stopwatch(Gtk.Window):
             self.lap_view.get_column(1).get_cells()[0], self._render_split
         )
         self.lap_view.get_column(2).get_cells()[0].set_property("foreground", "#888888")
+
+        # Right-click menu for copy
+        self.lap_view.connect("button-press-event", self._on_lap_click)
 
         scroll.add(self.lap_view)
         vbox.pack_start(scroll, True, True, 0)
@@ -121,6 +136,12 @@ class Stopwatch(Gtk.Window):
                 font-size: 52px;
                 font-weight: 300;
                 color: #f0f0f0;
+            }
+            #lap-display {
+                font-family: monospace;
+                font-size: 22px;
+                font-weight: 300;
+                color: #888888;
             }
             button {
                 font-family: monospace;
@@ -187,7 +208,10 @@ class Stopwatch(Gtk.Window):
         return self.elapsed
 
     def _tick(self):
-        self.time_label.set_text(fmt(self._now()))
+        now = self._now()
+        self.time_label.set_text(fmt(now))
+        if self.laps:
+            self.lap_label.set_text("lap " + fmt(now - self.last_lap))
         return self.running
 
     def _on_main(self, _=None):
@@ -212,6 +236,8 @@ class Stopwatch(Gtk.Window):
             GLib.source_remove(self.timer_id)
             self.timer_id = None
         self.time_label.set_text(fmt(self.elapsed))
+        if self.laps:
+            self.lap_label.set_text("lap " + fmt(self.elapsed - self.last_lap))
         self.main_btn.set_label("Start")
         self.main_btn.set_name("start-btn")
         self.reset_btn.set_label("Reset")
@@ -235,7 +261,28 @@ class Stopwatch(Gtk.Window):
         self.laps.clear()
         self.lap_store.clear()
         self.time_label.set_text("00:00.00")
+        self.lap_label.set_text("")
         self.reset_btn.set_sensitive(False)
+
+    def _copy_laps(self):
+        if not self.laps:
+            return
+        lines = ["Lap\tSplit\tTotal"]
+        for i, (total, split) in enumerate(self.laps, 1):
+            lines.append(f"{i}\t{fmt(split)}\t{fmt(total)}")
+        text = "\n".join(lines)
+        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        clipboard.set_text(text, -1)
+        clipboard.store()
+
+    def _on_lap_click(self, widget, event):
+        if event.button == 3 and self.laps:
+            menu = Gtk.Menu()
+            item = Gtk.MenuItem(label="Copy All Laps")
+            item.connect("activate", lambda _: self._copy_laps())
+            menu.append(item)
+            menu.show_all()
+            menu.popup_at_pointer(event)
 
     def _on_key(self, widget, event):
         key = Gdk.keyval_name(event.keyval)
@@ -247,6 +294,8 @@ class Stopwatch(Gtk.Window):
             self._reset()
         elif key in ("q", "Q"):
             Gtk.main_quit()
+        elif event.state & Gdk.ModifierType.CONTROL_MASK and key in ("c", "C"):
+            self._copy_laps()
 
 
 if __name__ == "__main__":
