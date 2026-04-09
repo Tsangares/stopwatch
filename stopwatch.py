@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """GTK3 Stopwatch with lap support."""
 import os
+import signal
 import sys
 import time
 import gi
 
-# Fork to background and detach from terminal
+# Double-fork to fully detach from terminal
 if os.fork() != 0:
     sys.exit(0)
 os.setsid()
-# Redirect stdio to /dev/null so closing the parent terminal doesn't crash us
+if os.fork() != 0:
+    sys.exit(0)
+# Redirect stdio to /dev/null so nothing ties us to the old terminal
 devnull = os.open(os.devnull, os.O_RDWR)
 for fd in (0, 1, 2):
     os.dup2(devnull, fd)
 os.close(devnull)
+signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib, Gdk
