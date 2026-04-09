@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Stopwatch
+Comment=A minimal GTK3 stopwatch with lap support
+Exec=stopwatch
+Icon=chronometer
+Terminal=false
+Type=Application
+Categories=Utility;Clock;GTK;
+Keywords=timer;stopwatch;lap;
